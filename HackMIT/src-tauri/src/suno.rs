@@ -127,21 +127,18 @@ pub async fn suno_generate_from_file() -> Result<String, String> {
 }
 
 async fn load_api_key() -> Result<String, String> {
+    // Load root .env (project root with package.json)
     let _ = dotenvy::dotenv();
-    // Walk up ancestors to find suno-config/.env
-    if std::env::var("SUNO_API_KEY").is_err() {
-        if let Some(env_path) = find_suno_config_file(".env") {
-            let _ = dotenvy::from_filename(&env_path);
-        }
-    }
+    if let Ok(root) = crate_root() { let _ = dotenvy::from_filename(root.join(".env")); }
     std::env::var("SUNO_API_KEY").map_err(|_| {
-        "SUNO_API_KEY not set. Put it in suno-config/.env as SUNO_API_KEY=...".to_string()
+        "SUNO_API_KEY not set. Put it in project root .env as SUNO_API_KEY=...".to_string()
     })
 }
 
 async fn load_request() -> Result<GenerateRequest, String> {
-    let path = find_suno_config_file("request.json")
-        .ok_or_else(|| "Could not find suno-config/request.json".to_string())?;
+    let path = find_suno_config_file("suno_request.json")
+        .or_else(|| find_suno_config_file("request.json"))
+        .ok_or_else(|| "Could not find suno-config/suno_request.json".to_string())?;
     let req_text = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed reading {}: {}", path.display(), e))?;
     serde_json::from_str(&req_text).map_err(|e| format!("Invalid JSON in request.json: {}", e))
@@ -160,6 +157,16 @@ fn find_suno_config_file(name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn crate_root() -> Result<PathBuf, String> {
+    let start = std::env::current_dir().map_err(|e| e.to_string())?;
+    for dir in start.ancestors() {
+        if dir.join("package.json").exists() {
+            return Ok(dir.to_path_buf());
+        }
+    }
+    Err("Could not locate project root".to_string())
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -238,7 +245,10 @@ async fn load_hackmit_request() -> Result<HackmitGenerateReq, String> {
 #[tauri::command]
 pub async fn suno_hackmit_generate_and_wait() -> Result<String, String> {
     let api_key = load_api_key().await?;
-    let payload = load_hackmit_request().await?;
+    // Regenerate the request JSON via Claude using latest screenshot before generating
+    let generated = crate::claude::regenerate_suno_request_json().await
+        .map_err(|e| format!("Claude generation failed: {}", e))?;
+    let payload = generated; // Use freshly generated payload
     let client = reqwest::Client::new();
 
     // 1) generate
