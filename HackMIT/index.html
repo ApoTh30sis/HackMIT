@@ -8,8 +8,8 @@
 </head>
 <body>
     <header>
-
         <div class="button-container">
+            <!--
             <div class = "option-container">
                 <label class="click-me-container main-label-style">Audio Weight</label>
                 <div class="slider-wrapper">
@@ -20,16 +20,48 @@
             <div class = "option-container">
                 <label class="click-me-container main-label-style">Audio Weight</label>
                 <div class="slider-wrapper">
-                    <label class="span-background"><span class="sliderValue">.5</span> <!-- Value display --></label>
+                    <label class="span-background"><span class="sliderValue">.5</span> </label>
                     <input type="range" class="modern-slider volumeSlider" min="0" max="100" value="50">
                 </div>
             </div>
+
             <div class = "option-container">
                 <label class="click-me-container main-label-style">Weirdness Constraint</label>
                 <div class="slider-wrapper">
-                    <label class="span-background"><span class="sliderValue">.5</span> <!-- Value display --></label>
+                    <label class="span-background"><span class="sliderValue">.5</span></label>
                     <input type="range" class="modern-slider volumeSlider" min="0" max="100" value="50">
                 </div>
+            </div>
+            -->
+
+
+            <div class="option-container">
+                <label class="main-label-style">Genre Preferences</label>
+                <div class="dropdown-container">
+                    <div class="dropdown-box" id="dropdownBox">Select genres...</div>
+                    <div class="dropdown-list " id="dropdownList">
+                        <label><input type="checkbox" value="pop"> Pop</label>
+                        <label><input type="checkbox" value="rock"> Rock</label>
+                        <label><input type="checkbox" value="hip hop"> Hip Hop</label>
+                        <label><input type="checkbox" value="r&b"> R&B</label>
+                        <label><input type="checkbox" value="electronic"> Electronic</label>
+                        <label><input type="checkbox" value="country"> Country</label>
+                        <label><input type="checkbox" value="jazz"> Jazz</label>
+                        <label><input type="checkbox" value="classical"> Classical</label>
+                        <label><input type="checkbox" value="reggae"> Reggae</label>
+                        <label><input type="checkbox" value="metal"> Metal</label>
+                        <label><input type="checkbox" value="blues"> Blues</label>
+                        <label><input type="checkbox" value="punk"> Punk</label>
+                        <label><input type="checkbox" value="latin"> Latin</label>
+                        <label><input type="checkbox" value="folk"> Folk</label>
+                        <label><input type="checkbox" value="k-pop"> K-Pop</label>
+                        <label><input type="checkbox" value="indie"> Indie</label>
+                        <label><input type="checkbox" value="lofi"> Lo-Fi</label>
+                        <label><input type="checkbox" value="afrobeats"> Afrobeats</label>
+                        <label><input type="checkbox" value="drill"> Drill</label>
+                    </div>
+                </div>
+                <script type="module" src="src/dropdown.ts"></script>
             </div>
             <div class = "option-container">
                 <label class="click-me-container main-label-style">Vocal Gender</label>

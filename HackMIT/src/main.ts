@@ -2,10 +2,6 @@ const activeButtons: Record<string, boolean> = {};
 const sliders = document.querySelectorAll<HTMLInputElement>(".volumeSlider");
 
 
-
-/**
- * Get the text for a button depending on its active state.
- */
 const getButtonText = (button: HTMLButtonElement, active: boolean): string => {
     if (active) {
         button.classList.add('pressed-button');
@@ -54,4 +50,6 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
     }
+
+
 });
