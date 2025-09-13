@@ -4,11 +4,19 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+mod suno;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            suno::suno_generate_from_file,
+            suno::suno_generate_and_wait,
+            suno::suno_get_credits,
+            suno::suno_hackmit_generate_and_wait
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
