@@ -1,22 +1,57 @@
-import { invoke } from "@tauri-apps/api/core";
+const activeButtons: Record<string, boolean> = {};
+const sliders = document.querySelectorAll<HTMLInputElement>(".volumeSlider");
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
 
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
-  }
-}
+
+/**
+ * Get the text for a button depending on its active state.
+ */
+const getButtonText = (button: HTMLButtonElement, active: boolean): string => {
+    if (active) {
+        button.classList.add('pressed-button');
+    } else {
+        button.classList.remove('pressed-button');
+    }
+    return button.getAttribute(active ? "activeText" : "nonActiveText") ?? button.getAttribute("nonActiveText")!;
+};
 
 window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
+    const buttons = document.querySelectorAll<HTMLButtonElement>(".main-button-style");
+
+    buttons.forEach((button) => {
+        // Initialize button state
+        activeButtons[button.id] = false;
+        button.textContent = getButtonText(button, false);
+
+        // Toggle state on click
+        button.addEventListener("click", () => {
+            const currentState = activeButtons[button.id];
+            const newState = !currentState;
+
+            activeButtons[button.id] = newState;
+            button.textContent = getButtonText(button, newState);
+
+            console.log(`${button.id}: ${newState}`);
+        });
+    });
+
+    const sliders = document.getElementsByClassName("volumeSlider");
+
+    for (let slider of sliders) {
+        const input = slider as HTMLInputElement;
+
+        // Find the corresponding span inside the same wrapper
+        const wrapper = input.closest(".slider-wrapper") as HTMLElement;
+        const valueSpan = wrapper?.querySelector(".sliderValue") as HTMLSpanElement;
+
+        if (valueSpan) {
+            // Initialize display
+            valueSpan.textContent = (Number(input.value) / 100).toFixed(2);
+
+            // Update on input
+            input.addEventListener("input", () => {
+                valueSpan.textContent = (Number(input.value) / 100).toFixed(2);
+            });
+        }
+    }
 });
