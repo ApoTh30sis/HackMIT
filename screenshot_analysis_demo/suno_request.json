@@ -1,0 +1,8 @@
+{
+  "topic": "A gentle modern classical piece with soft piano melodies and subtle string arrangements, designed to provide calm focus during email management. Inspired by Ludovico Einaudi's contemplative style, featuring sparse textures in minor keys with slow, flowing passages. The music creates a peaceful atmosphere that reduces mental clutter while maintaining concentration for administrative tasks, blending ambient undertones with delicate guitar accents.",
+  "tags": "modern classical, ambient, piano, strings, contemplative, Einaudi-inspired, sparse, gentle",
+  "negative_tags": "electronic, drums, heavy, fast tempo, major key, dense arrangements, electric guitar",
+  "prompt": null,
+  "make_instrumental": true,
+  "cover_clip_id": null
+}
