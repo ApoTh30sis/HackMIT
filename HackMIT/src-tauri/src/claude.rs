@@ -103,15 +103,27 @@ fn load_user_preferences(root: &Path) -> Option<UserPreferences> {
     serde_json::from_str(&txt).ok()
 }
 
-fn build_prompt(preferences: &Option<UserPreferences>) -> String {
+fn build_prompt(preferences: &Option<UserPreferences>, recent_genres: &[String]) -> String {
     let preferences_context = match preferences {
         Some(p) => format!("\n\nPRIMARY FACTOR - USER PREFERENCES (equal weight with screenshot context):\nUser prefers instrumental: {}\n", p.make_instrumental.unwrap_or(true)),
         None => String::new(),
     };
 
+    let diversity_guidance = {
+        let recent = if recent_genres.is_empty() {
+            "(none)".to_string()
+        } else {
+            recent_genres.join(", ")
+        };
+        format!(
+            "\n\nGENRE DIVERSITY RULES (very important):\n- Recent primary genres used (most recent first): {}\n- DO NOT repeat the same primary genre within the last 3 tracks unless the screenshot context strongly requires it.\n- If recent contained 'ambient' or 'electronic', choose a different non-electronic genre now (e.g., classical/orchestral, pop, rock, heavy metal, jazz, hip hop, acoustic, lofi, folk, blues, world).\n- If instrumental is preferred, still vary genre (e.g., orchestral/classical, acoustic fingerstyle, post-rock instrumental, jazz trio, string quartet).\n- Provide 2–4 concise tags including the primary GENRE first (e.g., 'classical, orchestral, cinematic' or 'rock, post-rock, guitar-driven').\n",
+            recent
+        )
+    };
+
     format!(
         "CRITICAL: Analyze this screenshot and user preferences as EQUAL PRIMARY factors, then use cognitive load analysis to fine-tune the music generation.\n\nPRIMARY ANALYSIS (Equal Priority):\nSCREENSHOT CONTEXT:\n1. What application/website is the user actively using?\n2. What specific task are they performing right now?\n3. What is their current work state (focused, overwhelmed, creative, analytical)?\n4. What type of cognitive load are they experiencing?\n\nUSER PREFERENCES:\n5. What are the user's preferred genres, instruments, and artists?\n6. What energy level and mood do they prefer?\n7. What should be avoided based on their preferences?\n\nCOGNITIVE LOAD & CONTEXT REFINEMENT:\n8. Based on the cognitive load analysis, how should the music be adjusted?\n   - High cognitive load (complex tasks) → Simpler, less distracting music\n   - Low cognitive load (routine tasks) → More engaging, dynamic music\n   - Creative tasks → Inspiring, flowing music\n   - Analytical tasks → Structured, minimal music\n   - Overwhelmed state → Calming, grounding music\n   - Focused state → Steady, supportive music\n\nGenerate a complete Suno.ai music request that balances screenshot context with user preferences, then refines based on cognitive load.\n\nPlease provide your response in this exact JSON format:\n{{\n  \"topic\": \"A detailed description of the music track (400-499 characters) that combines the screenshot work context with user preferences. Include key instruments, mood, tempo, and how it supports the user's current task.\",\n  \"tags\": \"Musical style/genre tags that balance the work activity with user preferences (max 100 characters)\",\n  \"negative_tags\": \"Styles or elements to avoid based on user preferences and work context (max 100 characters)\",\n  \"prompt\": null (leave empty for instrumental tracks, or provide lyrics if you think they would be great for this context)\n}}\n\nBALANCE APPROACH:\n- Screenshot context + User preferences = PRIMARY (equal weight)\n- Cognitive load analysis = REFINEMENT (fine-tune the prompt)\n- Create music that feels both contextually appropriate AND personally satisfying\n\nThe prompt should be detailed and comprehensive, utilizing the full 500 character limit in topic to create the perfect musical environment.{}Return ONLY the JSON, no other text.",
-        preferences_context
+        preferences_context + &diversity_guidance
     )
 }
 
@@ -233,7 +245,8 @@ pub async fn regenerate_suno_request_json() -> Result<HackmitGenerateReq> {
     let temp_dir = root.join("temp");
     let shot = find_latest_screenshot(&temp_dir)?;
     let prefs = load_user_preferences(&root);
-    let prompt = build_prompt(&prefs);
+    let recent = load_recent_genres(&root);
+    let prompt = build_prompt(&prefs, &recent);
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set in .env")?;
     let client = Client::new();
@@ -249,6 +262,21 @@ pub async fn regenerate_suno_request_json() -> Result<HackmitGenerateReq> {
     };
     let req = build_hackmit_req_from_claude(&json_block, &prefs)?;
 
+    // Update recent genres with the new tags (keep most recent first, unique, max 5)
+    if let Some(tags) = req.tags.clone() {
+        let mut current = load_recent_genres(&root);
+        let mut new_list = extract_primary_genres(&tags);
+        // Prepend new genres in order, ensuring uniqueness and recency
+        for g in new_list.drain(..) {
+            let gnorm = g.to_lowercase();
+            current.retain(|x| x.to_lowercase() != gnorm);
+            current.insert(0, g);
+        }
+        // cap to 5
+        if current.len() > 5 { current.truncate(5); }
+        let _ = save_recent_genres(&root, &current);
+    }
+
     // Save only to suno-config/suno_request.json (canonical)
     let dir = root.join("suno-config");
     let _ = fs::create_dir_all(&dir);
@@ -256,4 +284,38 @@ pub async fn regenerate_suno_request_json() -> Result<HackmitGenerateReq> {
     let pretty = serde_json::to_string_pretty(&req)?;
     fs::write(&underscore, &pretty).context("Failed to write suno_request.json")?;
     Ok(req)
+}
+
+fn recent_genres_path(root: &Path) -> PathBuf { root.join("suno-config").join("recent_genres.json") }
+
+fn load_recent_genres(root: &Path) -> Vec<String> {
+    let p = recent_genres_path(root);
+    let txt = std::fs::read_to_string(&p).ok();
+    if let Some(t) = txt {
+        serde_json::from_str::<serde_json::Value>(&t)
+            .ok()
+            .and_then(|v| v.get("recent").cloned())
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+            .unwrap_or_default()
+    } else { vec![] }
+}
+
+fn save_recent_genres(root: &Path, genres: &Vec<String>) -> Result<()> {
+    let p = recent_genres_path(root);
+    if let Some(dir) = p.parent() { let _ = std::fs::create_dir_all(dir); }
+    let obj = serde_json::json!({ "recent": genres });
+    std::fs::write(&p, serde_json::to_string_pretty(&obj)?).context("write recent_genres.json")?;
+    Ok(())
+}
+
+fn extract_primary_genres(tags: &str) -> Vec<String> {
+    // Heuristic: take the first 1-2 comma-separated items as primary genres
+    let mut v: Vec<String> = tags
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    if v.len() > 2 { v.truncate(2); }
+    v
 }
