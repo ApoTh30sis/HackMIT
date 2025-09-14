@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::Emitter;
 use device_query::DeviceQuery;
 use std::sync::Arc;
@@ -48,7 +48,7 @@ pub struct DecisionEvent {
     pub current_context: ContextSummary,
     pub previous_context: Option<ContextSummary>,
     pub is_similar: bool,
-    pub action: String, // "continue_and_queue" or "switch_with_fade"
+    pub action: String, // "continue" or "switch_with_fade"
 }
 
 async fn summarize_context(image_path: &Path) -> Result<ContextSummary> {
@@ -60,7 +60,8 @@ async fn summarize_context(image_path: &Path) -> Result<ContextSummary> {
     let _ = dotenvy::from_filename(root.join(".env"));
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY missing")?;
     let client = reqwest::Client::new();
-    let raw = crate::claude::call_anthropic(&client, &api_key, image_path, prompt)
+    // Use a faster, smaller Claude call for low latency classification
+    let raw = crate::claude::call_anthropic_quick(&client, &api_key, image_path, prompt)
         .await
         .context("Claude classify call failed")?;
     let maybe = crate::claude::extract_json_block(&raw).unwrap_or(raw);
@@ -70,16 +71,9 @@ async fn summarize_context(image_path: &Path) -> Result<ContextSummary> {
     Ok(ContextSummary { tag: parsed.tag, details: parsed.details, app: None })
 }
 
-fn similar(a: &ContextSummary, b: &ContextSummary) -> bool {
-    // Higher confidence similarity: same app name OR same tag prefix
-    let app_same = match (&a.app, &b.app) {
-        (Some(x), Some(y)) => x.eq_ignore_ascii_case(y),
-        _ => false,
-    };
-    if app_same { return true; }
-    let a_prefix = a.tag.split('-').next().unwrap_or("");
-    let b_prefix = b.tag.split('-').next().unwrap_or("");
-    a_prefix == b_prefix
+// Basic tag comparison used for switch decision (no image similarity thresholds)
+fn tags_differ(a: &ContextSummary, b: &ContextSummary) -> bool {
+    !a.tag.eq_ignore_ascii_case(&b.tag)
 }
 
 fn frontmost_app_name() -> Option<String> {
@@ -98,139 +92,80 @@ fn frontmost_app_name() -> Option<String> {
     None
 }
 
-// Lightweight difference check using perceptual hash
-#[derive(Clone)]
-struct ImageSig {
-    hash: img_hash::ImageHash,
-}
-
-fn compute_sig(width: u32, height: u32, rgba: &[u8]) -> Result<ImageSig> {
-    use img_hash::{HasherConfig, HashAlg};
-    use img_hash::image::{ImageBuffer, Rgba, DynamicImage};
-    let buf: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_vec(width, height, rgba.to_vec())
-        .ok_or_else(|| anyhow::anyhow!("Failed to build image buffer"))?;
-    let dynimg = DynamicImage::ImageRgba8(buf);
-    let hasher = HasherConfig::new().hash_alg(HashAlg::Mean).hash_size(8, 8).to_hasher();
-    let hash = hasher.hash_image(&dynimg);
-    Ok(ImageSig { hash })
-}
-
-fn sig_distance(a: &ImageSig, b: &ImageSig) -> u32 {
-    a.hash.dist(&b.hash)
-}
+// Removed perceptual hash and thresholds for simplicity
 
 pub fn start_periodic_task(app_handle: tauri::AppHandle) {
-    #[derive(Clone)]
+    #[derive(Clone, Default)]
     struct SharedState {
         prev_summary: Option<ContextSummary>,
-        prev_sig: Option<ImageSig>,
-        last_infer: Instant,
-        last_switch_at: Option<Instant>,
-        pending_diff_count: u8,
         infer_in_flight: bool,
+        needs_rerun: bool,
     }
 
     let root = crate::claude::project_root().unwrap_or(std::env::current_dir().unwrap());
     let shot_path = root.join("temp").join("current.png");
-    let state = Arc::new(Mutex::new(SharedState {
-        prev_summary: None,
-        prev_sig: None,
-        last_infer: Instant::now() - Duration::from_secs(60),
-        last_switch_at: None,
-        pending_diff_count: 0,
-        infer_in_flight: false,
-    }));
+    let state = Arc::new(Mutex::new(SharedState::default()));
     let app = app_handle.clone();
 
     tauri::async_runtime::spawn(async move {
-        let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    // 2s strikes a balance between responsiveness and CPU/network load
+    let mut ticker = tokio::time::interval(Duration::from_millis(2000));
         loop {
             ticker.tick().await;
-            // Capture (active display) without blocking future ticks
-            let (w, h, rgba) = match capture_active_display(&shot_path) {
-                Ok(v) => v,
-                Err(e) => { let _ = app.emit("screenshot:error", format!("capture failed: {e}")); continue; }
-            };
-            let sig = match compute_sig(w, h, &rgba) { Ok(s) => s, Err(e) => { let _ = app.emit("screenshot:error", format!("sig failed: {e}")); continue; } };
-            let app_name = frontmost_app_name();
 
-            let state_cloned = state.clone();
-            let app_for_evt = app.clone();
-            let shot_for_task = shot_path.clone();
-            let current_sig = sig.clone();
-
-            let mut should_spawn = false;
-            let mut prior_sig_for_task: Option<ImageSig> = None;
-            {
-                let mut st = state_cloned.lock().await;
-                // Determine change vs previous
-                let prior_sig = st.prev_sig.clone();
-                let need_visual_change = prior_sig.as_ref().map(|ps| sig_distance(&current_sig, ps) > 10).unwrap_or(true);
-                let prev_app = st.prev_summary.as_ref().and_then(|s| s.app.clone());
-                let app_changed = match (&app_name, &prev_app) { (Some(a), Some(b)) => !a.eq_ignore_ascii_case(&b), _ => false };
-                let need_infer = need_visual_change || app_changed || st.prev_summary.is_none();
-                let allow_infer = st.last_infer.elapsed() >= Duration::from_secs(3);
-
-                // update latest sig
-                st.prev_sig = Some(current_sig.clone());
-                prior_sig_for_task = prior_sig;
-
-                if need_infer && allow_infer && !st.infer_in_flight {
-                    st.infer_in_flight = true;
-                    should_spawn = true;
-                }
+            // 1) Always capture active display to temp/current.png
+            if let Err(e) = capture_active_display(&shot_path) {
+                let _ = app.emit("screenshot:error", format!("capture failed: {e}"));
+                continue;
             }
 
+            // 2) Notify frontend to enqueue generation for this screenshot
+            let _ = app.emit("queue:add", serde_json::json!({ "reason": "tick" }));
+
+            // 3) Spawn a lightweight summarization task (one at a time)
+            let should_spawn = {
+                let mut st = state.lock().await;
+                st.needs_rerun = true; // mark that a new screenshot arrived
+                if st.infer_in_flight { false } else { st.infer_in_flight = true; true }
+            };
+
             if should_spawn {
+                let app_for_evt = app.clone();
+                let state_cloned = state.clone();
+                let shot_for_task = shot_path.clone();
+                let app_name = frontmost_app_name();
                 tokio::spawn(async move {
-                    // Run summarization asynchronously
-                    let mut summary = ContextSummary { tag: "unknown".into(), details: "".into(), app: app_name.clone() };
-                    match summarize_context(&shot_for_task).await {
-                        Ok(mut s) => { s.app = app_name.clone(); summary = s; },
-                        Err(e) => { let _ = app_for_evt.emit("screenshot:error", format!("summarize failed: {e}")); }
-                    }
-
-                    // Decide and emit
-                    let mut st = state_cloned.lock().await;
-                    st.last_infer = Instant::now();
-                    let prev_summary = st.prev_summary.clone();
-                    let latest_sig = st.prev_sig.clone();
-
-                    let dist_small = match (&prior_sig_for_task, &latest_sig) {
-                        (Some(prev), Some(latest)) => sig_distance(prev, latest) <= 10,
-                        _ => false,
-                    };
-                    let is_similar_raw = match &prev_summary {
-                        Some(p) => {
-                            let app_same = match (&summary.app, &p.app) { (Some(a), Some(b)) => a.eq_ignore_ascii_case(b), _ => false };
-                            let tag_same = summary.tag == p.tag || summary.tag.split('-').next() == p.tag.split('-').next();
-                            (app_same && dist_small) || (tag_same && dist_small)
-                        },
-                        None => false,
-                    };
-                    let is_similar = if is_similar_raw { st.pending_diff_count = 0; true } else { st.pending_diff_count = st.pending_diff_count.saturating_add(1); st.pending_diff_count < 2 };
-
-                    let mut action = if is_similar { "continue_and_queue" } else { "switch_with_fade" };
-                    if action == "switch_with_fade" {
-                        let big_change = match (&prior_sig_for_task, &latest_sig) { (Some(a), Some(b)) => sig_distance(a, b) > 20, _ => true };
-                        let app_changed = match (&summary.app, &prev_summary.as_ref().and_then(|s| s.app.clone())) { (Some(a), Some(b)) => !a.eq_ignore_ascii_case(&b), _ => false };
-                        if let Some(t) = st.last_switch_at {
-                            if t.elapsed() < Duration::from_secs(12) && !big_change && !app_changed {
-                                action = "continue_and_queue";
+                    loop {
+                        // Snapshot whether we actually need a rerun
+                        {
+                            let mut st = state_cloned.lock().await;
+                            if !st.needs_rerun {
+                                // Nothing pending; release in-flight and exit
+                                st.infer_in_flight = false;
+                                break;
                             }
+                            // We'll consume this pending request in this iteration
+                            st.needs_rerun = false;
                         }
-                    }
 
-                    let evt = DecisionEvent {
-                        current_context: summary.clone(),
-                        previous_context: prev_summary.clone(),
-                        is_similar,
-                        action: action.to_string(),
-                    };
-                    let _ = app_for_evt.emit("context:decision", &evt);
-                    if action == "switch_with_fade" { st.last_switch_at = Some(Instant::now()); }
-                    st.prev_summary = Some(summary);
-                    st.infer_in_flight = false;
+                        let mut summary = ContextSummary { tag: "unknown".into(), details: "".into(), app: app_name.clone() };
+                        match summarize_context(&shot_for_task).await {
+                            Ok(mut s) => { s.app = app_name.clone(); summary = s; },
+                            Err(e) => { let _ = app_for_evt.emit("screenshot:error", format!("summarize failed: {e}")); }
+                        }
+
+                        let mut st = state_cloned.lock().await;
+                        let prev = st.prev_summary.clone();
+                        let action = match &prev {
+                            Some(p) if tags_differ(&summary, p) => "switch_with_fade",
+                            None => "switch_with_fade",
+                            _ => "continue",
+                        };
+                        let evt = DecisionEvent { current_context: summary.clone(), previous_context: prev.clone(), is_similar: false, action: action.to_string() };
+                        let _ = app_for_evt.emit("context:decision", &evt);
+                        st.prev_summary = Some(summary);
+                        // Loop will check if needs_rerun was set during this run and continue if so
+                    }
                 });
             }
         }

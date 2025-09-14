@@ -123,7 +123,7 @@ fn build_prompt(preferences: &Option<UserPreferences>, recent_genres: &[String],
         let instr = fp.instrumental.unwrap_or(true);
         let silly = fp.silly_mode.unwrap_or(false);
     let lyric_style = if instr { "N/A (instrumental)" } else if silly { "SILLY / HUMOROUS (funny, witty, light)" } else { "SERIOUS / PROFESSIONAL (natural, singable, appealing)" };
-    format!("\n\nEXPLICIT FRONTEND PREFERENCES (highest priority):\n- Selected genres: {}\n- Instrumental: {}\n- Vocal gender preference: {} (if instrumental=false)\n- Lyrics style: {}\nRULES FOR LYRICS (when instrumental=false):\n- You MUST provide coherent, natural, singable lyrics in the 'prompt' field (multi-line text).\n- If SILLY, be playful and witty; reference what's on the screen or the user's task if appropriate.\n- If SERIOUS, write genuine, professional-sounding lyrics that fit the chosen genre; not necessarily tied to the task.\n- Keep it clean and safe.\n", genres, instr, vocals, lyric_style)
+    format!("\n\nEXPLICIT FRONTEND PREFERENCES (highest priority):\n- Selected genres: {}\n- Instrumental: {}\n- Vocal gender preference: {} (if instrumental=false)\n- Lyrics style: {}\nRULES FOR LYRICS (when instrumental=false):\n- You MUST provide coherent, natural, singable lyrics in the 'prompt' field (multi-line text).\n- No character limit for lyrics; write as long as needed to make sense.\n- If SILLY, be playful and witty; reference what's on the screen or the user's task if appropriate.\n- If SERIOUS, write genuine, professional-sounding lyrics that fit the chosen genre; not necessarily tied to the task.\n- Keep it clean and safe.\n", genres, instr, vocals, lyric_style)
     } else { String::new() };
 
     let diversity_guidance = {
@@ -139,7 +139,7 @@ fn build_prompt(preferences: &Option<UserPreferences>, recent_genres: &[String],
     };
 
     format!(
-        "CRITICAL: Analyze this screenshot and user preferences as EQUAL PRIMARY factors, then use cognitive load analysis to fine-tune the music generation.\n\nPRIMARY ANALYSIS (Equal Priority):\nSCREENSHOT CONTEXT:\n1. What application/website is the user actively using?\n2. What specific task are they performing right now?\n3. What is their current work state (focused, overwhelmed, creative, analytical)?\n4. What type of cognitive load are they experiencing?\n\nUSER PREFERENCES:\n5. What are the user's preferred genres, instruments, and artists?\n6. What energy level and mood do they prefer?\n7. What should be avoided based on their preferences?\n\nCOGNITIVE LOAD & CONTEXT REFINEMENT:\n8. Based on the cognitive load analysis, how should the music be adjusted?\n   - High cognitive load (complex tasks) → Simpler, less distracting music\n   - Low cognitive load (routine tasks) → More engaging, dynamic music\n   - Creative tasks → Inspiring, flowing music\n   - Analytical tasks → Structured, minimal music\n   - Overwhelmed state → Calming, grounding music\n   - Focused state → Steady, supportive music\n\nGenerate a complete Suno.ai music request that balances screenshot context with user preferences, then refines based on cognitive load.\n\nPlease provide your response in this exact JSON format:\n{{\n  \"topic\": \"A detailed description of the music track (400-499 characters) that combines the screenshot work context with user preferences. Include key instruments, mood, tempo, and how it supports the user's current task.\",\n  \"tags\": \"Musical style/genre tags that balance the work activity with user preferences (max 100 characters)\",\n  \"negative_tags\": \"Styles or elements to avoid based on user preferences and work context (max 100 characters)\",\n  \"prompt\": null (leave empty for instrumental tracks, or provide lyrics if you think they would be great for this context)\n}}\n\nBALANCE APPROACH:\n- Screenshot context + User preferences = PRIMARY (equal weight)\n- Cognitive load analysis = REFINEMENT (fine-tune the prompt)\n- Create music that feels both contextually appropriate AND personally satisfying\n\nThe prompt should be detailed and comprehensive, utilizing the full 500 character limit in topic to create the perfect musical environment.{}Return ONLY the JSON, no other text.",
+        "CRITICAL: Analyze this screenshot and user preferences as EQUAL PRIMARY factors, then use cognitive load analysis to fine-tune the music generation.\n\nPRIMARY ANALYSIS (Equal Priority):\nSCREENSHOT CONTEXT:\n1. What application/website is the user actively using?\n2. What specific task are they performing right now?\n3. What is their current work state (focused, overwhelmed, creative, analytical)?\n4. What type of cognitive load are they experiencing?\n\nUSER PREFERENCES:\n5. What are the user's preferred genres, instruments, and artists?\n6. What energy level and mood do they prefer?\n7. What should be avoided based on their preferences?\n\nCOGNITIVE LOAD & CONTEXT REFINEMENT:\n8. Based on the cognitive load analysis, how should the music be adjusted?\n   - High cognitive load (complex tasks) → Simpler, less distracting music\n   - Low cognitive load (routine tasks) → More engaging, dynamic music\n   - Creative tasks → Inspiring, flowing music\n   - Analytical tasks → Structured, minimal music\n   - Overwhelmed state → Calming, grounding music\n   - Focused state → Steady, supportive music\n\nGenerate a complete Suno.ai music request that balances screenshot context with user preferences, then refines based on cognitive load.\n\nPlease provide your response in this exact JSON format:\n{{\n  \"topic\": \"A detailed description of the music track (400-499 characters) that combines the screenshot work context with user preferences. Include key instruments, mood, tempo, and how it supports the user's current task.\",\n  \"tags\": \"Musical style/genre tags that balance the work activity with user preferences (max 100 characters)\",\n  \"negative_tags\": \"Styles or elements to avoid based on user preferences and work context (max 100 characters)\",\n  \"prompt\": null (REQUIRED multi-line lyrics when instrumental=false; no character limit. Leave null ONLY for instrumental tracks)\n}}\n\nBALANCE APPROACH:\n- Screenshot context + User preferences = PRIMARY (equal weight)\n- Cognitive load analysis = REFINEMENT (fine-tune the prompt)\n- Create music that feels both contextually appropriate AND personally satisfying\n\nThe prompt should be detailed and comprehensive, utilizing the full 500 character limit in topic to create the perfect musical environment.{}Return ONLY the JSON, no other text.",
         preferences_context + &fe_context + &diversity_guidance
     )
 }
@@ -156,7 +156,7 @@ pub(crate) async fn call_anthropic(client: &Client, api_key: &str, image_path: &
 
     let req = AnthropicRequest {
         model: "claude-3-5-haiku-latest".to_string(),
-        max_tokens: 1000,
+        max_tokens: 2000,
         messages: vec![Message {
             role: "user".into(),
             content: vec![
@@ -180,6 +180,45 @@ pub(crate) async fn call_anthropic(client: &Client, api_key: &str, image_path: &
     if !status.is_success() { anyhow::bail!("Anthropic error ({}): {}", status, text); }
     let parsed: AnthropicResponse = serde_json::from_str(&text).context("Parse Anthropic response failed")?;
     let first = parsed.content.first().ok_or_else(|| anyhow::anyhow!("Empty content from Anthropic"))?;
+    Ok(first.text.clone())
+}
+
+// Faster, lightweight variant for quick classification
+pub(crate) async fn call_anthropic_quick(client: &Client, api_key: &str, image_path: &Path, prompt: &str) -> Result<String> {
+    let image_bytes = fs::read(image_path).with_context(|| format!("Failed to read image: {}", image_path.display()))?;
+    let base64_data = BASE64_STD.encode(&image_bytes);
+    let media_type = match image_path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()) {
+        Some(ref ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
+        Some(ref ext) if ext == "png" => "image/png",
+        _ => "image/png",
+    };
+
+    let req = AnthropicRequest {
+        model: "claude-3-haiku-20240307".to_string(),
+        max_tokens: 300,
+        messages: vec![Message {
+            role: "user".into(),
+            content: vec![
+                Content { content_type: "text".into(), text: Some(prompt.to_string()), source: None },
+                Content { content_type: "image".into(), text: None, source: Some(ImageSource { source_type: "base64".into(), media_type: media_type.into(), data: base64_data }) },
+            ],
+        }],
+    };
+
+    let res = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&req)
+        .send()
+        .await
+        .context("Failed to call Anthropic API (quick)")?;
+    let status = res.status();
+    let text = res.text().await.unwrap_or_default();
+    if !status.is_success() { anyhow::bail!("Anthropic error ({}): {}", status, text); }
+    let parsed: AnthropicResponse = serde_json::from_str(&text).context("Parse Anthropic response failed (quick)")?;
+    let first = parsed.content.first().ok_or_else(|| anyhow::anyhow!("Empty content from Anthropic (quick)"))?;
     Ok(first.text.clone())
 }
 
@@ -239,7 +278,7 @@ fn build_hackmit_req_from_claude(json_str: &str, prefs: &Option<UserPreferences>
     let topic = topic.unwrap_or_else(|| "Generated track".to_string());
     let mut tags = tags.unwrap_or_else(|| "cinematic, ambient".to_string());
     tags = shorten(&tags, 100);
-    let prompt = prompt.map(|p| shorten(&p, 500));
+    let prompt = prompt; // do NOT shorten lyrics; no character limit
 
     let make_instrumental = prefs.as_ref().and_then(|p| p.make_instrumental).unwrap_or(true);
     Ok(HackmitGenerateReq {
@@ -347,7 +386,7 @@ pub async fn regenerate_suno_request_json_with_prefs(fe_prefs: FrontendPreferenc
         } else {
             "Verse 1:\nDrafting dreams in quiet rooms, chasing melody\nFinding light in steady lines, calm complexity\nChorus:\nPull me closer, hold the moment, let the night begin\nIn the hush between these pages, I can breathe again\n"
         };
-        req.prompt = Some(shorten(fallback, 500));
+        req.prompt = Some(fallback.to_string()); // no truncation
     }
 
     // Update recent genres tracking

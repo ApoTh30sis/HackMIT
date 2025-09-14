@@ -360,6 +360,62 @@ pub async fn suno_hackmit_generate_and_wait_with_prefs(prefs: crate::claude::Fro
     Err("Timed out waiting for audio URL".to_string())
 }
 
+#[tauri::command]
+pub async fn suno_generate_from_latest_screenshot_with_prefs(prefs: crate::claude::FrontendPreferences) -> Result<TrackInfo, String> {
+    let api_key = load_api_key().await?;
+    let generated = crate::claude::regenerate_suno_request_json_with_prefs(prefs).await
+        .map_err(|e| format!("Claude generation failed: {}", e))?;
+    let client = reqwest::Client::new();
+
+    let gen_res = client
+        .post(HACKMIT_GENERATE_URL)
+        .bearer_auth(&api_key)
+        .json(&generated)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error (generate): {}", e))?;
+    let status = gen_res.status();
+    let gen_text = gen_res.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() { return Err(format!("Generate error ({}): {}", status, gen_text)); }
+    let gen: HackmitGenerateResp = serde_json::from_str(&gen_text)
+        .map_err(|e| format!("Parse generate response failed: {}. Raw: {}", e, gen_text))?;
+
+    // Poll short for first available clip url
+    let max_iters = 36u32;
+    for _ in 0..max_iters {
+        let url = format!("{}?ids={}", HACKMIT_CLIPS_URL, gen.id);
+        let clips_res = client.get(url).bearer_auth(&api_key).send().await
+            .map_err(|e| format!("HTTP error (clips): {}", e))?;
+        let st = clips_res.status();
+        let clips_text = clips_res.text().await.map_err(|e| e.to_string())?;
+        if !st.is_success() { return Err(format!("Clips error ({}): {}", st, clips_text)); }
+        let mut clips: Vec<HackmitClip> = match serde_json::from_str::<Vec<HackmitClip>>(&clips_text) {
+            Ok(v) => v,
+            Err(_) => {
+                #[derive(Deserialize)]
+                struct Wrapper { clips: Vec<HackmitClip> }
+                let w: Wrapper = serde_json::from_str(&clips_text)
+                    .map_err(|e| format!("Parse clips response failed: {}. Raw: {}", e, clips_text))?;
+                w.clips
+            }
+        };
+        if let Some(clip) = clips.pop() {
+            if let Some(url) = clip.audio_url.clone() {
+                return Ok(TrackInfo {
+                    id: Some(clip.id),
+                    title: clip.title.clone(),
+                    tags: None,
+                    duration: None,
+                    audio_url: Some(url.clone()),
+                    stream_audio_url: None,
+                });
+            }
+        }
+        sleep(std::time::Duration::from_secs(5)).await;
+    }
+    Err("Timed out waiting for audio URL".to_string())
+}
+
 async fn get_status(client: &reqwest::Client, api_key: &str, task_id: &str) -> Result<StatusResponse, String> {
     let url = format!("{}?taskId={}", SUNO_STATUS_URL, task_id);
     let res = client
