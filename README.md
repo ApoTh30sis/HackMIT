@@ -1,4 +1,4 @@
-# HackMIT - AI-Powered Context-Aware Music Generator
+# ContextFM - AI-Powered Context-Aware Music Generator
 
 A desktop application that automatically generates and plays music based on your current screen content and activity. Built with Tauri (Rust + TypeScript), it uses AI to analyze screenshots and create contextual music through Suno's API.
 
@@ -191,7 +191,7 @@ Check console output for detailed information about:
 
 ## 📄 License
 
-This project is part of HackMIT 2024. Please check with the organizers for specific licensing terms.
+This project was created for HackMIT 2024. Please check with the organizers for specific licensing terms.
 
 ## 🙏 Acknowledgments
 
