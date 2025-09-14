@@ -243,6 +243,17 @@ async fn load_hackmit_request() -> Result<HackmitGenerateReq, String> {
 }
 
 #[tauri::command]
+pub async fn get_current_music_tags() -> Result<Option<String>, String> {
+    let path = find_suno_config_file("suno_request.json")
+        .ok_or_else(|| "Could not find suno-config/suno_request.json".to_string())?;
+    let txt = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed reading {}: {}", path.display(), e))?;
+    let request: HackmitGenerateReq = serde_json::from_str(&txt)
+        .map_err(|e| format!("Invalid JSON in suno_request.json: {}", e))?;
+    Ok(request.tags)
+}
+
+#[tauri::command]
 pub async fn suno_hackmit_generate_and_wait() -> Result<String, String> {
     let api_key = load_api_key().await?;
     // Regenerate the request JSON via Claude using latest screenshot before generating

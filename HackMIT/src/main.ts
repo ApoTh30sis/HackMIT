@@ -6,12 +6,8 @@ let genBtnEl: HTMLButtonElement | null;
 let statusEl: HTMLElement | null;
 let audioEl: HTMLAudioElement | null;
 let nextUrl: string | null = null;
-// Use a deque to allow pushFront/pushBack behavior
-const queue: string[] = [];
-let queueInfoEl: HTMLElement | null;
 let contextEl: HTMLElement | null;
 let generating = false;
-let pendingRequests = 0;
 let history: string[] = []; // played track URLs (for Back)
 
 const getButtonText = (button: HTMLButtonElement, active: boolean): string => {
@@ -43,7 +39,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
         // Toggle state on click
         button.addEventListener("click", () => {
-            if (button.textContent.indexOf("Instrumental") != -1) {
+            if (button.textContent && button.textContent.indexOf("Instrumental") != -1) {
                 if (instrumental) {
                     hiddenButton.classList.add("main-button-style");
                     hiddenButton.classList.remove("hidden");
@@ -103,10 +99,9 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
     }
-    genBtnEl = document.querySelector("#generate-btn");
-    statusEl = document.querySelector("#status");
-    audioEl = document.querySelector("#player");
-    queueInfoEl = document.querySelector("#queue-info");
+  genBtnEl = document.querySelector("#generate-btn");
+  statusEl = document.querySelector("#status");
+  audioEl = document.querySelector("#player");
     contextEl = document.querySelector("#context");
     const backBtn = document.querySelector<HTMLButtonElement>("#btn-back");
     const playPauseBtn = document.querySelector<HTMLButtonElement>("#btn-play-pause");
@@ -121,57 +116,11 @@ window.addEventListener("DOMContentLoaded", () => {
         // logEl.prepend(p);
     }
 
-    function updateQueueInfo() {
-        if (queueInfoEl) queueInfoEl.textContent = `In queue: ${queue.length}`;
+    // Touch helpers to avoid tree-shaking/unused warnings in dev
+    if (Math.random() < 0) {
+        pushLog("");
     }
 
-    function enqueue(url: string) {
-        queue.push(url); // pushBack by default
-        updateQueueInfo();
-    }
-
-    function dequeue(): string | undefined {
-        const u = queue.shift();
-        updateQueueInfo();
-        return u;
-    }
-
-    // pushFront not required in MVP; immediate switch plays URL directly
-
-        // Touch helpers to avoid tree-shaking/unused warnings in dev
-        if (Math.random() < 0) {
-            pushLog("");
-            enqueue("");
-            dequeue();
-        }
-
-    async function drainGenerationQueue() {
-            if (generating) return;
-            generating = true;
-            try {
-                while (pendingRequests > 0) {
-                    const prefs = collectPreferences();
-                    pushLog("generating from latest screenshot...");
-                    try {
-                        const url = await invoke<string>("suno_hackmit_generate_and_wait_with_prefs", { prefs });
-                        enqueue(url);
-                        pushLog("enqueued track from screenshot");
-                        pendingRequests--;
-                        // If player idle, start playback immediately
-                        if (audioEl && audioEl.paused && queue.length > 0) {
-                            const u = dequeue();
-                            if (u) { audioEl.src = u; try { await audioEl.play(); } catch {} }
-                        }
-                    } catch (e) {
-                        pushLog(`generation error: ${e}`);
-                        // drop this request to avoid infinite loop
-                        pendingRequests--;
-                    }
-                }
-            } finally {
-                generating = false;
-            }
-        }
 
     async function generateTrack(): Promise<string> {
         const prefs = collectPreferences();
@@ -212,8 +161,8 @@ window.addEventListener("DOMContentLoaded", () => {
             if (t.includes("instrumental")) {
                 instrumental = t.includes("on");
             } else if (t.includes("vocals")) {
-                vocals_gender = t.includes("female") ? "female" : "male";
-            }
+            vocals_gender = t.includes("female") ? "female" : "male";
+        }
         });
         // Silly button
         const sillyBtn = document.querySelector<HTMLButtonElement>(".silly_button");
@@ -221,7 +170,7 @@ window.addEventListener("DOMContentLoaded", () => {
         return { genres, vocals_gender, instrumental, silly_mode };
     }
 
-            genBtnEl?.addEventListener("click", async () => {
+    genBtnEl?.addEventListener("click", async () => {
     if (!statusEl || !audioEl) return;
     statusEl.textContent = "Requesting generation (HackMIT flow)…";
     genBtnEl!.disabled = true;
@@ -235,11 +184,8 @@ window.addEventListener("DOMContentLoaded", () => {
             // Pre-generate next track so there's no gap at end
                     if (!nextUrl && !generating) {
                 generating = true;
-                        generateTrack().then((u) => { enqueue(u); nextUrl = dequeue() || null; pushLog("prefetched next track"); }).catch(() => {}).finally(() => { generating = false; });
+                        generateTrack().then((u) => { nextUrl = u; pushLog("prefetched next track"); }).catch(() => {}).finally(() => { generating = false; });
             }
-                // also queue one more from next screenshot immediately
-                pendingRequests++;
-                drainGenerationQueue();
     } catch (err: any) {
       statusEl.textContent = `Error: ${err?.toString?.() ?? "unknown"}`;
     } finally {
@@ -250,14 +196,14 @@ window.addEventListener("DOMContentLoaded", () => {
     // Never pause: when current ends, immediately play next or generate one
                 audioEl?.addEventListener("ended", async () => {
             if (!audioEl) return;
-                    const next = nextUrl || dequeue();
+                    const next = nextUrl;
                     if (next) {
                         const u = next; nextUrl = null;
         if (audioEl.src) history.push(audioEl.src);
                 audioEl.src = u;
                 try { await audioEl.play(); } catch {}
                 // Preload the following one
-                    if (!generating) { generating = true; generateTrack().then((nu) => { enqueue(nu); nextUrl = dequeue() || null; pushLog("prefetched next after switch"); }).catch(() => {}).finally(() => { generating = false; }); }
+                    if (!generating) { generating = true; generateTrack().then((nu) => { nextUrl = nu; pushLog("prefetched next after switch"); }).catch(() => {}).finally(() => { generating = false; }); }
             } else {
                     // Ensure there's no pause: restart current track while generating next
                     const resumeVol = audioEl.volume;
@@ -266,7 +212,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     try { await audioEl.play(); } catch {}
                     if (!generating) {
                         generating = true;
-                              generateTrack().then((u) => { enqueue(u); nextUrl = dequeue() || null; pushLog("prefetched next after restart"); }).catch(() => {}).finally(() => { generating = false; });
+                              generateTrack().then((u) => { nextUrl = u; pushLog("prefetched next after restart"); }).catch(() => {}).finally(() => { generating = false; });
                     }
             }
         });
@@ -281,7 +227,19 @@ window.addEventListener("DOMContentLoaded", () => {
             const prev = payload?.previous_context;
             if (contextEl && ctx) {
                 const prevTag = prev?.tag ? ` (prev: ${prev.tag})` : "";
-                contextEl.textContent = `Context: ${ctx.tag} — ${ctx.details}${prevTag}`;
+                let contextText = `Context: ${ctx.tag} — ${ctx.details}${prevTag}`;
+                
+                // Add music tags to context display
+                try {
+                    const musicTags = await invoke<string | null>("get_current_music_tags");
+                    if (musicTags) {
+                        contextText += ` | Music: ${musicTags}`;
+                    }
+                } catch (e) {
+                    console.log("Could not fetch music tags:", e);
+                }
+                
+                contextEl.textContent = contextText;
             }
             if (action === "switch_with_fade") {
                 // High-priority: regenerate JSON with Claude and play asap, preempting queue
@@ -290,7 +248,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         const url = await generateTrack(); // invokes backend which regenerates suno_request.json from latest screenshot
                         await fadeOutAndSwitch(url);
                         // Optionally warm a next track without blocking
-                        generateTrack().then((nu) => { enqueue(nu); nextUrl = dequeue() || null; pushLog("prefetched next after fade switch"); }).catch(() => {});
+                        generateTrack().then((nu) => { nextUrl = nu; pushLog("prefetched next after fade switch"); }).catch(() => {});
                     } catch (e) {
                         pushLog(`priority generation failed: ${e}`);
                     }
@@ -299,17 +257,44 @@ window.addEventListener("DOMContentLoaded", () => {
                 // continue: ensure we have a next track ready
                 if (!nextUrl && !generating) {
                     generating = true;
-                          generateTrack().then((u) => { enqueue(u); nextUrl = dequeue() || null; pushLog("prefetched next on continue"); }).catch(() => {}).finally(() => { generating = false; });
+                          generateTrack().then((u) => { nextUrl = u; pushLog("prefetched next on continue"); }).catch(() => {}).finally(() => { generating = false; });
                 }
             }
         });
 
-            // When backend says queue:add, immediately generate and enqueue a track
-                listen("queue:add", async () => {
-                    pushLog("queue:add received → add pending generation");
-                    pendingRequests++;
-                    drainGenerationQueue();
-                });
+
+            // Listen for music:switch events from backend - immediately switch to new music
+            listen("music:switch", async (ev) => {
+                const audioUrl = ev.payload as string;
+                if (audioUrl && audioEl) {
+                    console.log("Received music:switch, immediately switching to:", audioUrl);
+                    await fadeOutAndSwitch(audioUrl);
+                    
+                    // Update context display with new music tags
+                    if (contextEl) {
+                        try {
+                            const musicTags = await invoke<string | null>("get_current_music_tags");
+                            if (musicTags) {
+                                const currentText = contextEl.textContent || "";
+                                // Update the music part of the context text
+                                const baseText = currentText.split(" | Music:")[0];
+                                contextEl.textContent = `${baseText} | Music: ${musicTags}`;
+                            }
+                        } catch (e) {
+                            console.log("Could not fetch music tags after switch:", e);
+                        }
+                    }
+                }
+            });
+
+            // Listen for music:error events from backend
+            listen("music:error", async (ev) => {
+                const errorMsg = ev.payload as string;
+                if (statusEl) {
+                    statusEl.textContent = `Error: ${errorMsg}`;
+                }
+                console.error("Music generation error:", errorMsg);
+            });
 
             // Gray-out vocals when instrumental is ON (robust to order)
             const mainButtons = document.querySelectorAll<HTMLButtonElement>(".main-button-style");
@@ -354,7 +339,7 @@ window.addEventListener("DOMContentLoaded", () => {
             });
             forwardBtn?.addEventListener("click", async () => {
                 if (!audioEl) return;
-                const next = nextUrl || dequeue();
+                const next = nextUrl;
                 if (next) {
                     if (audioEl.src) history.push(audioEl.src);
                     try { audioEl.src = next; await audioEl.play(); nextUrl = null; } catch {}
