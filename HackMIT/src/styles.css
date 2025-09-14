@@ -331,3 +331,52 @@ select {
     filter: saturate(1.1);
 }
 
+/* Controls row and buttons */
+.controls-row {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+.control-button {
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #34435E, #60E1E0);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transition: all 0.2s ease-in-out;
+}
+
+.control-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+}
+
+.control-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.context-panel {
+    margin-top: 8px;
+    color: #e6f7f7;
+    font-size: 13px;
+    min-height: 18px;
+}
+
+.queue-info {
+    margin-top: 8px;
+    color: #e6f7f7;
+    font-size: 13px;
+}
+
+.log-panel {
+    display: none; /* Hide logs per user request */
+}
+

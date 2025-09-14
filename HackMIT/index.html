@@ -57,15 +57,23 @@
                 </div>
                 <script type="module" src="src/dropdown.ts"></script>
             </div>
-            <button class="click-me-container main-button-style" activeText="Vocals : Female" nonActiveText="Vocals : Male"></button>
             <button class="click-me-container main-button-style" activeText="Instrumental : Off" nonActiveText="Instrumental : On"></button>
-            <button class="hidden click-me-container silly_button " activeText="Serious" nonActiveText="Silly">Silly</button>
+            <button class="click-me-container main-button-style" activeText="Vocals : Female" nonActiveText="Vocals : Male"></button>
+            <button class="hidden click-me-container silly_button " activeText="Silly" nonActiveText="Serious">Silly</button>
             <!-- <button class="click-me-container main-button-style" activeText="Stop" nonActiveText="Generate"></button> -->
         </div>
         <button id="generate-btn" class="main-button-style">Generate & Play</button>
         <div class="player-card">
             <p id="status" class="player-status">Ready</p>
             <audio id="player" class="modern-audio" controls autoplay></audio>
+            <div class="controls-row">
+                <button id="btn-back" class="control-button" aria-label="Back">⏮</button>
+                <button id="btn-play-pause" class="control-button" aria-label="Play/Pause">⏸</button>
+                <button id="btn-forward" class="control-button" aria-label="Forward">⏭</button>
+            </div>
+            <div id="context" class="context-panel"></div>
+            <div id="queue-info" class="queue-info">Queue: 0</div>
+            <div id="log" class="log-panel"></div>
         </div>
     </header>
 </html>
