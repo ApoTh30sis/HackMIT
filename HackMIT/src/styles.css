@@ -41,6 +41,7 @@ footer {
 }
 
 .button-container {
+    transform: translateY(-50px);
     display: flex;
     flex-direction: column;
     justify-content: end; /* pushes children to bottom */
@@ -145,9 +146,8 @@ select {
     appearance: none;             /* remove default arrow in some browsers */
 }
 
-.option-container {
+.option-container {     
     display: flex;             /* enables side-by-side layout */
-    align-items: center;       /* vertically center label and dropdown */
 }
 
 .modern-slider {
@@ -226,6 +226,8 @@ select {
 }
 
 .dropdown-box {
+    width: 200px;
+    height: 50px;
     padding: 10px;
     color: white;
     background: linear-gradient(135deg, #4a90e2, #357abd);
@@ -267,5 +269,26 @@ select {
 
 .dropdown-list input[type="checkbox"] {
     margin-right: 10px;
+}
+
+.shift {
+    transform: translate(-20px,20px);
+}
+
+
+.hidden {
+   opacity : 20%;
+}
+.silly_button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    background: linear-gradient(135deg, #34435E, #60E1E0);
+    color: #fff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 

@@ -12,6 +12,9 @@ const getButtonText = (button: HTMLButtonElement, active: boolean): string => {
 };
 
 window.addEventListener("DOMContentLoaded", () => {
+    const hiddenButton = document.getElementsByClassName("hidden")[0];
+    let hidden = true;
+    let instrumental = true;
     const buttons = document.querySelectorAll<HTMLButtonElement>(".main-button-style");
 
     buttons.forEach((button) => {
@@ -21,6 +24,16 @@ window.addEventListener("DOMContentLoaded", () => {
 
         // Toggle state on click
         button.addEventListener("click", () => {
+            if (button.textContent.indexOf("Instrumental") != -1) {
+                if (instrumental) {
+                    hiddenButton.classList.add("main-button-style");
+                    hiddenButton.classList.remove("hidden");
+                } else {
+                    hiddenButton.classList.add("hidden");
+                    hiddenButton.classList.remove("main-button-style")
+                }
+                instrumental = ! instrumental;
+            }
             const currentState = activeButtons[button.id];
             const newState = !currentState;
 
@@ -29,6 +42,23 @@ window.addEventListener("DOMContentLoaded", () => {
 
             console.log(`${button.id}: ${newState}`);
         });
+    });
+
+    hiddenButton.addEventListener("click", () => {
+    if (! instrumental) {
+        
+        if (hidden){
+            hiddenButton.textContent = getButtonText(hiddenButton, hidden);
+        }
+        else{
+
+            hiddenButton.textContent = getButtonText(hiddenButton,hidden);
+        }
+        hidden = !hidden
+    }
+
+        
+
     });
 
     const sliders = document.getElementsByClassName("volumeSlider");
