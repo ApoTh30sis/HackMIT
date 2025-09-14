@@ -27,4 +27,9 @@ dotenvy = "0.15"
 tokio = { version = "1", features = ["time", "macros", "rt-multi-thread"] }
 anyhow = "1"
 base64 = "0.22"
+screenshots = "0.8"
+png = "0.18"
+image = { version = "0.24", default-features = false, features = ["png"] }
+img_hash = "3.2"
+device_query = "2.1"
 
