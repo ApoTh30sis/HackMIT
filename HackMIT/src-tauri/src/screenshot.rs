@@ -6,6 +6,7 @@ use tauri::Emitter;
 use device_query::DeviceQuery;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use image::{ImageBuffer, Rgba};
 
 // Capture screenshot using "screenshots" crate
 fn capture_active_display(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
@@ -22,18 +23,32 @@ fn capture_active_display(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
     let width = img.width();
     let height = img.height();
     let buffer = img.into_raw();
+
+    // Create an ImageBuffer from the raw buffer
+    let img_buf = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(width, height, buffer.clone()).ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
+
+    // Calculate the new dimensions for 720p height, maintaining aspect ratio
+    let new_height = 720;
+    let new_width = (width as f32 * (new_height as f32 / height as f32)).round() as u32;
+
+    // Resize the image
+    let resized_img = image::imageops::resize(&img_buf, new_width, new_height, image::imageops::FilterType::Lanczos3);
+    
+    // Get the raw bytes of the resized image
+    let resized_buffer = resized_img.into_raw();
+
     // Write PNG for debugging/Claude
     let mut png_bytes = Vec::new();
     {
-        let mut encoder = png::Encoder::new(&mut png_bytes, width, height);
+        let mut encoder = png::Encoder::new(&mut png_bytes, new_width, new_height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().context("PNG write_header failed")?;
-        writer.write_image_data(&buffer).context("PNG write_image_data failed")?;
+        writer.write_image_data(&resized_buffer).context("PNG write_image_data failed")?;
     }
     let _ = std::fs::create_dir_all(path.parent().unwrap());
     let _ = std::fs::write(path, &png_bytes);
-    Ok((width, height, buffer))
+    Ok((new_width, new_height, resized_buffer))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
