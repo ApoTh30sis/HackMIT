@@ -17,21 +17,15 @@
                     <input type="range" class="modern-slider volumeSlider" min="0" max="100" value="50">
                 </div>
             </div>
-            <div class = "option-container">
-                <label class="click-me-container main-label-style">Audio Weight</label>
-                <div class="slider-wrapper">
-                    <label class="span-background"><span class="sliderValue">.5</span> </label>
-                    <input type="range" class="modern-slider volumeSlider" min="0" max="100" value="50">
-                </div>
-            </div>
 
             <div class = "option-container">
-                <label class="click-me-container main-label-style">Weirdness Constraint</label>
-                <div class="slider-wrapper">
-                    <label class="span-background"><span class="sliderValue">.5</span></label>
-                    <input type="range" class="modern-slider volumeSlider" min="0" max="100" value="50">
-                </div>
+                <label class="click-me-container main-label-style">Vocal Gender</label>
+                <select class="modern-dropdown" name="myDropdown">
+                    <option value="option1">Male</option>
+                    <option value="option2">Female</option>
+                </select>
             </div>
+
             -->
 
 
@@ -63,20 +57,8 @@
                 </div>
                 <script type="module" src="src/dropdown.ts"></script>
             </div>
-            <div class = "option-container">
-                <label class="click-me-container main-label-style">Vocal Gender</label>
-                <select class="modern-dropdown" name="myDropdown">
-                    <option value="option1">M</option>
-                    <option value="option2">F</option>
-                </select>
-            </div>
-            <div class = "option-container">
-                <label class="click-me-container main-label-style">Instrumental</label>
-                <select class="modern-dropdown" name="myDropdown">
-                    <option value="option1">True</option>
-                    <option value="option2">False</option>
-                </select>
-            </div>
+            <button class="click-me-container main-button-style" activeText="Vocals : Female" nonActiveText="Vocals : Male"></button>
+            <button class="click-me-container main-button-style" activeText="Instrumental : Off" nonActiveText="Instrumental : On"></button>
             <button class="click-me-container main-button-style" activeText="Stop" nonActiveText="Generate"></button>
         </div>
     </header>

@@ -90,6 +90,22 @@ footer {
     width: 200px; /* optional */
 }
 
+.main-label-style-off {
+    display: flex;
+    justify-content: center; /* horizontal */
+    align-items: center;     /* vertical */
+    text-align: center;      /* fallback for inline text */
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    background: linear-gradient(135deg, #34435E, #808080);
+    color: #fff;
+    height: 50px; /* or whatever height you need */
+    width: 200px; /* optional */
+}
+
 select {
     padding: 8px 12px;
     border-radius: 8px;
@@ -211,9 +227,9 @@ select {
 
 .dropdown-box {
     padding: 10px;
+    color: white;
     background: linear-gradient(135deg, #4a90e2, #357abd);
     border-radius: 8px;
-    background: #fff;
     cursor: pointer;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
