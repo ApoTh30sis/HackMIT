@@ -302,6 +302,64 @@ pub async fn suno_hackmit_generate_and_wait() -> Result<String, String> {
     Err("Timed out waiting for audio URL".to_string())
 }
 
+#[tauri::command]
+pub async fn suno_hackmit_generate_and_wait_with_prefs(prefs: crate::claude::FrontendPreferences) -> Result<String, String> {
+    let api_key = load_api_key().await?;
+    // Regenerate the request JSON via Claude using latest screenshot and provided preferences
+    let generated = crate::claude::regenerate_suno_request_json_with_prefs(prefs).await
+        .map_err(|e| format!("Claude generation failed: {}", e))?;
+    let payload = generated; // Use freshly generated payload
+    let client = reqwest::Client::new();
+
+    // 1) generate
+    let gen_res = client
+        .post(HACKMIT_GENERATE_URL)
+        .bearer_auth(&api_key)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error (generate): {}", e))?;
+    let status = gen_res.status();
+    let gen_text = gen_res.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("Generate error ({}): {}", status, gen_text));
+    }
+    let gen: HackmitGenerateResp = serde_json::from_str(&gen_text)
+        .map_err(|e| format!("Parse generate response failed: {}. Raw: {}", e, gen_text))?;
+
+    // 2) poll clips until audio_url present
+    let max_iters = 36u32; // ~3 minutes @5s
+    for _ in 0..max_iters {
+        let url = format!("{}?ids={}", HACKMIT_CLIPS_URL, gen.id);
+        let clips_res = client
+            .get(url)
+            .bearer_auth(&api_key)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error (clips): {}", e))?;
+        let st = clips_res.status();
+        let clips_text = clips_res.text().await.map_err(|e| e.to_string())?;
+        if !st.is_success() {
+            return Err(format!("Clips error ({}): {}", st, clips_text));
+        }
+        let clips: Vec<HackmitClip> = match serde_json::from_str::<Vec<HackmitClip>>(&clips_text) {
+            Ok(v) => v,
+            Err(_) => {
+                #[derive(Deserialize)]
+                struct Wrapper { clips: Vec<HackmitClip> }
+                let w: Wrapper = serde_json::from_str(&clips_text)
+                    .map_err(|e| format!("Parse clips response failed: {}. Raw: {}", e, clips_text))?;
+                w.clips
+            }
+        };
+        if let Some(url) = clips.iter().filter_map(|c| c.audio_url.clone()).next() {
+            return Ok(url);
+        }
+        sleep(std::time::Duration::from_secs(5)).await;
+    }
+    Err("Timed out waiting for audio URL".to_string())
+}
+
 async fn get_status(client: &reqwest::Client, api_key: &str, task_id: &str) -> Result<StatusResponse, String> {
     let url = format!("{}?taskId={}", SUNO_STATUS_URL, task_id);
     let res = client

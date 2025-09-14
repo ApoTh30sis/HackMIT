@@ -65,6 +65,14 @@ struct UserPreferences {
     make_instrumental: Option<bool>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FrontendPreferences {
+    pub genres: Option<Vec<String>>, // from multi-select
+    pub vocals_gender: Option<String>, // "male" | "female" | "none"
+    pub instrumental: Option<bool>, // true => no lyrics
+    pub silly_mode: Option<bool>, // optional extra from UI
+}
+
 pub(crate) fn project_root() -> Result<PathBuf> {
     // Start from current dir and walk up to folder containing package.json (HackMIT root)
     let mut dir = std::env::current_dir()?;
@@ -103,11 +111,20 @@ fn load_user_preferences(root: &Path) -> Option<UserPreferences> {
     serde_json::from_str(&txt).ok()
 }
 
-fn build_prompt(preferences: &Option<UserPreferences>, recent_genres: &[String]) -> String {
+fn build_prompt(preferences: &Option<UserPreferences>, recent_genres: &[String], fe_prefs: &Option<FrontendPreferences>) -> String {
     let preferences_context = match preferences {
         Some(p) => format!("\n\nPRIMARY FACTOR - USER PREFERENCES (equal weight with screenshot context):\nUser prefers instrumental: {}\n", p.make_instrumental.unwrap_or(true)),
         None => String::new(),
     };
+
+    let fe_context = if let Some(fp) = fe_prefs {
+        let genres = fp.genres.clone().unwrap_or_default().join(", ");
+        let vocals = fp.vocals_gender.clone().unwrap_or_else(|| "none".to_string());
+        let instr = fp.instrumental.unwrap_or(true);
+        let silly = fp.silly_mode.unwrap_or(false);
+    let lyric_style = if instr { "N/A (instrumental)" } else if silly { "SILLY / HUMOROUS (funny, witty, light)" } else { "SERIOUS / PROFESSIONAL (natural, singable, appealing)" };
+    format!("\n\nEXPLICIT FRONTEND PREFERENCES (highest priority):\n- Selected genres: {}\n- Instrumental: {}\n- Vocal gender preference: {} (if instrumental=false)\n- Lyrics style: {}\nRULES FOR LYRICS (when instrumental=false):\n- You MUST provide coherent, natural, singable lyrics in the 'prompt' field (multi-line text).\n- If SILLY, be playful and witty; reference what's on the screen or the user's task if appropriate.\n- If SERIOUS, write genuine, professional-sounding lyrics that fit the chosen genre; not necessarily tied to the task.\n- Keep it clean and safe.\n", genres, instr, vocals, lyric_style)
+    } else { String::new() };
 
     let diversity_guidance = {
         let recent = if recent_genres.is_empty() {
@@ -123,7 +140,7 @@ fn build_prompt(preferences: &Option<UserPreferences>, recent_genres: &[String])
 
     format!(
         "CRITICAL: Analyze this screenshot and user preferences as EQUAL PRIMARY factors, then use cognitive load analysis to fine-tune the music generation.\n\nPRIMARY ANALYSIS (Equal Priority):\nSCREENSHOT CONTEXT:\n1. What application/website is the user actively using?\n2. What specific task are they performing right now?\n3. What is their current work state (focused, overwhelmed, creative, analytical)?\n4. What type of cognitive load are they experiencing?\n\nUSER PREFERENCES:\n5. What are the user's preferred genres, instruments, and artists?\n6. What energy level and mood do they prefer?\n7. What should be avoided based on their preferences?\n\nCOGNITIVE LOAD & CONTEXT REFINEMENT:\n8. Based on the cognitive load analysis, how should the music be adjusted?\n   - High cognitive load (complex tasks) → Simpler, less distracting music\n   - Low cognitive load (routine tasks) → More engaging, dynamic music\n   - Creative tasks → Inspiring, flowing music\n   - Analytical tasks → Structured, minimal music\n   - Overwhelmed state → Calming, grounding music\n   - Focused state → Steady, supportive music\n\nGenerate a complete Suno.ai music request that balances screenshot context with user preferences, then refines based on cognitive load.\n\nPlease provide your response in this exact JSON format:\n{{\n  \"topic\": \"A detailed description of the music track (400-499 characters) that combines the screenshot work context with user preferences. Include key instruments, mood, tempo, and how it supports the user's current task.\",\n  \"tags\": \"Musical style/genre tags that balance the work activity with user preferences (max 100 characters)\",\n  \"negative_tags\": \"Styles or elements to avoid based on user preferences and work context (max 100 characters)\",\n  \"prompt\": null (leave empty for instrumental tracks, or provide lyrics if you think they would be great for this context)\n}}\n\nBALANCE APPROACH:\n- Screenshot context + User preferences = PRIMARY (equal weight)\n- Cognitive load analysis = REFINEMENT (fine-tune the prompt)\n- Create music that feels both contextually appropriate AND personally satisfying\n\nThe prompt should be detailed and comprehensive, utilizing the full 500 character limit in topic to create the perfect musical environment.{}Return ONLY the JSON, no other text.",
-        preferences_context + &diversity_guidance
+        preferences_context + &fe_context + &diversity_guidance
     )
 }
 
@@ -246,7 +263,7 @@ pub async fn regenerate_suno_request_json() -> Result<HackmitGenerateReq> {
     let shot = find_latest_screenshot(&temp_dir)?;
     let prefs = load_user_preferences(&root);
     let recent = load_recent_genres(&root);
-    let prompt = build_prompt(&prefs, &recent);
+    let prompt = build_prompt(&prefs, &recent, &None);
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set in .env")?;
     let client = Client::new();
@@ -283,6 +300,75 @@ pub async fn regenerate_suno_request_json() -> Result<HackmitGenerateReq> {
     let underscore = dir.join("suno_request.json");
     let pretty = serde_json::to_string_pretty(&req)?;
     fs::write(&underscore, &pretty).context("Failed to write suno_request.json")?;
+    Ok(req)
+}
+
+pub async fn regenerate_suno_request_json_with_prefs(fe_prefs: FrontendPreferences) -> Result<HackmitGenerateReq> {
+    // Load env (.env at project root)
+    let _ = dotenvy::dotenv();
+    let root = project_root()?;
+    let _ = dotenvy::from_filename(root.join(".env"));
+
+    let temp_dir = root.join("temp");
+    let shot = find_latest_screenshot(&temp_dir)?;
+    let prefs = load_user_preferences(&root);
+    let recent = load_recent_genres(&root);
+    let prompt = build_prompt(&prefs, &recent, &Some(fe_prefs.clone()));
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set in .env")?;
+    let client = Client::new();
+    let raw = call_anthropic(&client, &api_key, &shot, &prompt).await?;
+    let json_block = match extract_json_block(&raw) {
+        Some(s) => s,
+        None => {
+            if serde_json::from_str::<Value>(&raw).is_ok() { raw.clone() } else {
+                anyhow::bail!("Claude response did not contain JSON block or parsable JSON")
+            }
+        }
+    };
+    let mut req = build_hackmit_req_from_claude(&json_block, &prefs)?;
+
+    // Apply frontend preferences: instrumental/lyrics and vocals gender
+    if let Some(instr) = fe_prefs.instrumental { req.make_instrumental = Some(instr); }
+    if let Some(genres) = fe_prefs.genres.clone() {
+        // Prepend frontend genres to tags if not already present
+        let mut tags = req.tags.clone().unwrap_or_default();
+        if !genres.is_empty() {
+            let g = genres.join(", ");
+            if tags.is_empty() { tags = g; } else { tags = format!("{}, {}", g, tags); }
+            req.tags = Some(shorten(&tags, 100));
+        }
+    }
+
+    // Ensure lyrics present if vocals requested but prompt is empty
+    if matches!(req.make_instrumental, Some(false)) && req.prompt.is_none() {
+        let fallback = if fe_prefs.silly_mode.unwrap_or(false) {
+            "Verse 1:\nOn my screen the windows dance, tabs and tasks collide\nShortcut sparks and midnight marks, pixels as my guide\nChorus:\nClick clack, bring the groove back, let the workflow sing\nLaughing through the chaos while I do my thing\n"
+        } else {
+            "Verse 1:\nDrafting dreams in quiet rooms, chasing melody\nFinding light in steady lines, calm complexity\nChorus:\nPull me closer, hold the moment, let the night begin\nIn the hush between these pages, I can breathe again\n"
+        };
+        req.prompt = Some(shorten(fallback, 500));
+    }
+
+    // Update recent genres tracking
+    if let Some(tags) = req.tags.clone() {
+        let mut current = load_recent_genres(&root);
+        let mut new_list = extract_primary_genres(&tags);
+        for g in new_list.drain(..) {
+            let gnorm = g.to_lowercase();
+            current.retain(|x| x.to_lowercase() != gnorm);
+            current.insert(0, g);
+        }
+        if current.len() > 5 { current.truncate(5); }
+        let _ = save_recent_genres(&root, &current);
+    }
+
+    // Persist and return
+    let dir = root.join("suno-config");
+    let _ = std::fs::create_dir_all(&dir);
+    let underscore = dir.join("suno_request.json");
+    let pretty = serde_json::to_string_pretty(&req)?;
+    std::fs::write(&underscore, &pretty).context("Failed to write suno_request.json")?;
     Ok(req)
 }
 

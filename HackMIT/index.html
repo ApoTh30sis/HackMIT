@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Tauri App</title>
     <link rel="stylesheet" href="src/styles.css">
-    <script src="src/main.ts"></script>
+    <script type="module" src="src/main.ts"></script>
 </head>
 <body>
     <header>
@@ -60,20 +60,12 @@
             <button class="click-me-container main-button-style" activeText="Vocals : Female" nonActiveText="Vocals : Male"></button>
             <button class="click-me-container main-button-style" activeText="Instrumental : Off" nonActiveText="Instrumental : On"></button>
             <button class="hidden click-me-container silly_button " activeText="Serious" nonActiveText="Silly">Silly</button>
-            <button class="click-me-container main-button-style" activeText="Stop" nonActiveText="Generate"></button>
+            <!-- <button class="click-me-container main-button-style" activeText="Stop" nonActiveText="Generate"></button> -->
+        </div>
+        <button id="generate-btn" class="main-button-style">Generate & Play</button>
+        <div class="player-card">
+            <p id="status" class="player-status">Ready</p>
+            <audio id="player" class="modern-audio" controls autoplay></audio>
         </div>
     </header>
-</body>
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-    <p id="greet-msg"></p>
-
-    <hr />
-    <button id="generate-btn">Generate & Play</button>
-    <p id="status"></p>
-    <audio id="player" controls autoplay></audio>
-    </main>
-  </body>
 </html>

@@ -23,7 +23,8 @@ pub fn run() {
             suno::suno_generate_from_file,
             suno::suno_generate_and_wait,
             suno::suno_get_credits,
-            suno::suno_hackmit_generate_and_wait
+            suno::suno_hackmit_generate_and_wait,
+            suno::suno_hackmit_generate_and_wait_with_prefs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

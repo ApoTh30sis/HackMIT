@@ -1,4 +1,22 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const box = document.getElementById("dropdownBox");
+  const list = document.getElementById("dropdownList");
+  if (!box || !list) return;
+
+  const close = () => { (list as HTMLElement).style.display = "none"; };
+  const open = () => { (list as HTMLElement).style.display = "block"; };
+
+  let opened = false;
+  box.addEventListener("click", (e) => {
+    e.stopPropagation();
+    opened ? close() : open();
+    opened = !opened;
+  });
+  document.addEventListener("click", () => {
+    if (opened) { close(); opened = false; }
+  });
+});
+document.addEventListener("DOMContentLoaded", () => {
     const dropdownBox = document.getElementById('dropdownBox') as HTMLDivElement;
     const dropdownList = document.getElementById('dropdownList') as HTMLDivElement;
     const checkboxes = dropdownList.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');

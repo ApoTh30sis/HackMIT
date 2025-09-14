@@ -1,8 +1,7 @@
-const activeButtons: Record<string, boolean> = {};
-const sliders = document.querySelectorAll<HTMLInputElement>(".volumeSlider");
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
+const activeButtons: Record<string, boolean> = {};
 let genBtnEl: HTMLButtonElement | null;
 let statusEl: HTMLElement | null;
 let audioEl: HTMLAudioElement | null;
@@ -17,15 +16,22 @@ const getButtonText = (button: HTMLButtonElement, active: boolean): string => {
 };
 
 window.addEventListener("DOMContentLoaded", () => {
-    const hiddenButton = document.getElementsByClassName("hidden")[0];
+    const hiddenButton = document.getElementsByClassName("hidden")[0] as HTMLButtonElement;
     let hidden = true;
     let instrumental = true;
-    const buttons = document.querySelectorAll<HTMLButtonElement>(".main-button-style");
+    const all = Array.from(document.querySelectorAll<HTMLButtonElement>(".main-button-style"));
+    const buttons = all.filter((b) => b.id !== "generate-btn");
 
-    buttons.forEach((button) => {
+    buttons.forEach((button, idx) => {
         // Initialize button state
-        activeButtons[button.id] = false;
-        button.textContent = getButtonText(button, false);
+        const key = button.id || `btn-${idx}`;
+        (button as any).dataset.key = key;
+        activeButtons[key] = false;
+        // Only set text based on attributes if they exist
+        const hasTextAttrs = button.hasAttribute("activeText") || button.hasAttribute("nonActiveText");
+        if (hasTextAttrs) {
+            button.textContent = getButtonText(button, false);
+        }
 
         // Toggle state on click
         button.addEventListener("click", () => {
@@ -39,11 +45,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
                 instrumental = ! instrumental;
             }
-            const currentState = activeButtons[button.id];
+            const key = (button as any).dataset.key as string;
+            const currentState = activeButtons[key];
             const newState = !currentState;
 
-            activeButtons[button.id] = newState;
-            button.textContent = getButtonText(button, newState);
+            activeButtons[key] = newState;
+            const hasTextAttrs = button.hasAttribute("activeText") || button.hasAttribute("nonActiveText");
+            if (hasTextAttrs) {
+                button.textContent = getButtonText(button, newState);
+            }
 
             console.log(`${button.id}: ${newState}`);
         });
@@ -85,25 +95,45 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
     }
-
-
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
-
   genBtnEl = document.querySelector("#generate-btn");
   statusEl = document.querySelector("#status");
   audioEl = document.querySelector("#player");
 
-  genBtnEl?.addEventListener("click", async () => {
+    function collectPreferences() {
+        // Genres: read checked boxes in #dropdownList
+        const list = document.getElementById("dropdownList");
+        const genres: string[] = [];
+        if (list) {
+            const checks = list.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked');
+            checks.forEach((c) => genres.push(c.value));
+        }
+        // Buttons: using their text content to infer state
+        // Assume 1st main-button is vocal gender toggle (Male/Female)
+        // 2nd is Instrumental On/Off
+        const buttons = document.querySelectorAll<HTMLButtonElement>(".main-button-style");
+        let vocals_gender: string | null = null;
+        let instrumental = true;
+        if (buttons[0]) {
+            const t = buttons[0].textContent?.toLowerCase() || "";
+            vocals_gender = t.includes("female") ? "female" : "male";
+        }
+        if (buttons[1]) {
+            const t = buttons[1].textContent?.toLowerCase() || "";
+            instrumental = t.includes("on");
+        }
+        // Silly button
+        const sillyBtn = document.querySelector<HTMLButtonElement>(".silly_button");
+        const silly_mode = sillyBtn ? sillyBtn.textContent?.toLowerCase().includes("silly") : false;
+        return { genres, vocals_gender, instrumental, silly_mode };
+    }
+
+    genBtnEl?.addEventListener("click", async () => {
     if (!statusEl || !audioEl) return;
     statusEl.textContent = "Requesting generation (HackMIT flow)…";
     genBtnEl!.disabled = true;
     try {
-      const url = await invoke<string>("suno_hackmit_generate_and_wait");
+            const prefs = collectPreferences();
+            const url = await invoke<string>("suno_hackmit_generate_and_wait_with_prefs", { prefs });
       statusEl.textContent = "Stream ready. Playing…";
       audioEl.src = url;
       await audioEl.play().catch(() => {
@@ -115,4 +145,9 @@ window.addEventListener("DOMContentLoaded", () => {
       genBtnEl!.disabled = false;
     }
   });
+
+    // Optional: listen to backend context decisions as before (kept if needed)
+        listen("context:decision", async () => {
+            // No-op here unless you want to reflect in UI
+        });
 });

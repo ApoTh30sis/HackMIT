@@ -14,8 +14,10 @@ body {
 
 header {
     display: flex;
-    justify-content: flex-start;
-    padding: 10px;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
 }
 
 .settings-btn {
@@ -41,15 +43,11 @@ footer {
 }
 
 .button-container {
-    transform: translateY(-50px);
     display: flex;
     flex-direction: column;
-    justify-content: end; /* pushes children to bottom */
-    align-items: center;       /* centers horizontally */
-    height: 500px;              /* make sure parent has a height */
-    width: 400px;
-    gap: 30px;
-    /* transform: translateY(375%); */
+    align-items: center;
+    gap: 16px;
+    width: 360px;
 }
 
 .click-me-container {
@@ -73,6 +71,7 @@ footer {
     background: linear-gradient(135deg, #34435E, #60E1E0);
     color: #fff;
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    width: 200px; /* prevent stretching full width */
 }
 
 .main-label-style {
@@ -152,6 +151,7 @@ select {
 
 .modern-slider {
     -webkit-appearance: none; /* remove default style for Chrome/Safari */
+    appearance: none;         /* standard property */
     transform: translateY(10px);
     width: 130px;
     height: 8px;
@@ -290,5 +290,44 @@ select {
     background: linear-gradient(135deg, #34435E, #60E1E0);
     color: #fff;
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Player card and modern audio styling */
+.player-card {
+    margin-top: 16px;
+    width: 320px;
+    padding: 16px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(52,67,94,0.8), rgba(96,225,224,0.25));
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    backdrop-filter: blur(4px);
+}
+
+.player-status {
+    margin: 0 0 8px 0;
+    color: #e6f7f7;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.modern-audio {
+    width: 100%;
+    height: 40px;
+    border-radius: 10px;
+    background: #223146;
+    color-scheme: dark; /* ensure controls use dark scheme when supported */
+}
+
+/* Improve default audio controls look on WebKit/Blink */
+.modern-audio::-webkit-media-controls-panel {
+    background: linear-gradient(135deg, #223146, #2b3e58);
+}
+.modern-audio::-webkit-media-controls-play-button,
+.modern-audio::-webkit-media-controls-timeline,
+.modern-audio::-webkit-media-controls-current-time-display,
+.modern-audio::-webkit-media-controls-time-remaining-display,
+.modern-audio::-webkit-media-controls-mute-button,
+.modern-audio::-webkit-media-controls-volume-slider {
+    filter: saturate(1.1);
 }
 
