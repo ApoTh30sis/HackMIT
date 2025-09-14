@@ -65,7 +65,7 @@ struct UserPreferences {
     make_instrumental: Option<bool>,
 }
 
-fn project_root() -> Result<PathBuf> {
+pub(crate) fn project_root() -> Result<PathBuf> {
     // Start from current dir and walk up to folder containing package.json (HackMIT root)
     let mut dir = std::env::current_dir()?;
     loop {
@@ -115,7 +115,7 @@ fn build_prompt(preferences: &Option<UserPreferences>) -> String {
     )
 }
 
-async fn call_anthropic(client: &Client, api_key: &str, image_path: &Path, prompt: &str) -> Result<String> {
+pub(crate) async fn call_anthropic(client: &Client, api_key: &str, image_path: &Path, prompt: &str) -> Result<String> {
     let image_bytes = fs::read(image_path).with_context(|| format!("Failed to read image: {}", image_path.display()))?;
     let base64_data = BASE64_STD.encode(&image_bytes);
     // determine media type
@@ -154,7 +154,7 @@ async fn call_anthropic(client: &Client, api_key: &str, image_path: &Path, promp
     Ok(first.text.clone())
 }
 
-fn extract_json_block(s: &str) -> Option<String> {
+pub(crate) fn extract_json_block(s: &str) -> Option<String> {
     // If Claude returned a fenced block ```json ... ```, strip the fences first
     let trimmed = s.trim();
     let without_fence = if let Some(start) = trimmed.find("```") {

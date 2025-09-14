@@ -6,11 +6,18 @@ fn greet(name: &str) -> String {
 
 mod suno;
 mod claude;
+mod screenshot;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            // kick off periodic screenshot + context decision task
+            let handle = app.handle().clone();
+            crate::screenshot::start_periodic_task(handle);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             suno::suno_generate_from_file,
