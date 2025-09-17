@@ -33,7 +33,7 @@ A desktop application that automatically generates and plays music based on your
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone <https://github.com/ApoTh30sis/HackMIT.git>
    cd HackMIT
    ```
 
